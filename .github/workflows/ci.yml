@@ -1,15 +1,16 @@
-name: Publish Library
+name: CI Check
 
 on:
-  release:
-    types: [published]
+  push:
+    branches:
+      - main              # Auto-run on merge to main
+  workflow_dispatch:      # Manual trigger — click "Run workflow" in GitHub Actions tab
 
 jobs:
-  publish:
+  build-and-test:
     runs-on: ubuntu-latest
     permissions:
       contents: read
-      packages: write
 
     steps:
       - name: Checkout code
@@ -24,8 +25,5 @@ jobs:
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v3
 
-      - name: Build, Test, and Publish
-        run: ./gradlew build publish
-        env:
-          GITHUB_ACTOR: ${{ github.actor }}
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Build and Test
+        run: ./gradlew build
