@@ -1,0 +1,37 @@
+plugins {
+    kotlin("jvm") version "2.3.10"
+    `java-library`
+    `maven-publish`
+}
+
+group = "com.aadith"
+version = "0.0.1"
+
+repositories {
+    mavenCentral()
+}
+
+dependencies {
+    api("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.10.2")
+    testImplementation(kotlin("test"))
+}
+
+kotlin {
+    jvmToolchain(21)
+}
+
+publishing {
+    publications {
+        create<MavenPublication>("maven") {
+            from(components["java"])
+
+            groupId = project.group.toString()
+            artifactId = "sample-kai-fuzzer"
+            version = project.version.toString()
+        }
+    }
+}
+
+tasks.test {
+    useJUnitPlatform()
+}
