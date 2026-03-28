@@ -94,6 +94,7 @@ BUILD SUCCESSFUL in 1m 47s
 
 ## What it does
 
+This project was built for differential testing of the kotlin compiler across different versions
 It downloads the required compilers, and runs the fuzzy generated code on the compilers for each specified version.
 
 You can even perform specific testing. Pass in your own Kotlin code, and watch Kai take it through the entire system and
@@ -555,6 +556,7 @@ Since the [KT-47891](https://youtrack.jetbrains.com/issue/KT-47891/JVM-IllegalSt
 
 - This is a simple proof of concept for my proposal. It does not implement the sophisticated input generator algorithms to do the actual fuzzing yet.
 - It demonstrates pluggability and clean architecture the best. But, File IO in the `SampleIssueManager()` currently hardcodes output paths to the project root. For production, this module will adhere to stricter protocols to make it more flexible for the user.
+- There is a proposal to extend this fuzzer to support all Kotlin backends (JVM, Native, JS, WASM). After the JVM support is stable, work for the other backends will begin.
 --- 
 
 ## Next Steps for this repository
