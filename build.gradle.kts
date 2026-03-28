@@ -33,7 +33,7 @@ publishing {
         repositories {
             maven {
                 name = "GitHubPackages"
-                url = uri("https://maven.pkg.github.com/AJThePro99/sample-kotlin-library")
+                url = uri("https://maven.pkg.github.com/AJThePro99/sample-kai-fuzzer")
                 credentials {
                     username = System.getenv("GITHUB_ACTOR")
                     password = System.getenv("GITHUB_TOKEN")
