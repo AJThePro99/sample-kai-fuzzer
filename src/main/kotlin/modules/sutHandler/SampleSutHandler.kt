@@ -6,10 +6,7 @@ import dataModels.FuzzInput
 import dataModels.SutBackend
 import dataModels.SutResult
 import modules.utility.sutHandlerUtility.KotlinCompilerDownloaderJVM
-import modules.utility.sutHandlerUtility.OutputCaptureUtility
 import java.io.File
-import java.io.PrintStream
-import java.net.URLClassLoader
 import java.nio.file.Files
 
 /*
@@ -61,40 +58,37 @@ class SampleSutHandler(
 
         val outputJarPath = "${tempDir.absolutePath}/output.jar"
 
-        val classLoader = URLClassLoader(
-            arrayOf(compilerJar.toURI().toURL(), trove4jJar.toURI().toURL())
+        val classpath = listOf(
+            compilerJar.absolutePath,
+            trove4jJar.absolutePath,
+            File(homeDir, "lib/kotlin-reflect.jar").absolutePath,
+            File(homeDir, "lib/kotlin-stdlib.jar").absolutePath,
+            File(homeDir, "lib/kotlin-script-runtime.jar").absolutePath,
+            File(homeDir, "lib/kotlinx-coroutines-core-jvm.jar").absolutePath,
+            File(homeDir, "lib/annotations.jar").absolutePath
+        ).joinToString(File.pathSeparator)
+
+        val javaExe = System.getProperty("java.home") + File.separator + "bin" + File.separator + "java"
+        val pb = ProcessBuilder(
+            javaExe, "-cp", classpath,
+            "org.jetbrains.kotlin.cli.jvm.K2JVMCompiler",
+            sourceFile.absolutePath,
+            "-d", outputJarPath,
+            "-kotlin-home", homeDir.absolutePath,
+            "-Xskip-prerelease-check"
         )
+        val process = pb.start()
+        val stdErrStr = process.errorStream.bufferedReader().use { it.readText() }
+        val exitCode = process.waitFor()
 
-        val captureResult = OutputCaptureUtility.capturePrintStream { printStream ->
-            val compilerClass = classLoader.loadClass("org.jetbrains.kotlin.cli.jvm.K2JVMCompiler")
-            val compiler = compilerClass.getDeclaredConstructor().newInstance()
-
-            /*
-                 last flag suppresses errors that occur when a project uses dependencies or classes compiled with a pre-release
-                 (e.g., alpha, beta) version of the Kotlin compiler that is newer than the project's own compiler version
-             */
-            val args = arrayOf(
-                sourceFile.absolutePath,
-                "-d", outputJarPath,
-                "-kotlin-home", homeDir.absolutePath,
-                "-Xskip-prerelease-check"
-            )
-
-            val execMethod = compilerClass.getMethod("exec", PrintStream::class.java, Array<String>::class.java)
-            val exitCodeEnum = execMethod.invoke(compiler, printStream, args)
-
-            val exitCodeName = exitCodeEnum.javaClass.getMethod("name").invoke(exitCodeEnum) as String
-            if (exitCodeName == "OK") 0 else 1
-        }
-
-        val finalExitCode = if (captureResult.exception != null) 2 else (captureResult.result ?: 1)
+        val finalExitCode = if (exitCode == 0) 0 else 1
         val compiledFilePath = if (finalExitCode == 0) outputJarPath else null
 
         return CompilerExecutionOutput(
             version = version,
             exitCode = finalExitCode,
             stdout = "",
-            stderr = captureResult.output,
+            stderr = stdErrStr,
             compiledFilePath = compiledFilePath
         )
     }

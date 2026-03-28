@@ -1,12 +1,15 @@
 package modules.utility.sutHandlerUtility
 
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import java.io.File
 import java.net.URL
 import java.nio.file.Files
 import java.nio.file.Paths
 import java.nio.file.StandardCopyOption
+import java.util.concurrent.ConcurrentHashMap
 
 
 /*
@@ -16,58 +19,83 @@ import java.nio.file.StandardCopyOption
     Currently, it can only download jvm dependencies. Not for the other backends.
  */
 class KotlinCompilerDownloaderJVM {
+    private val downloadLocks = ConcurrentHashMap<String, Mutex>()
+    private val compilerSetupLocks = ConcurrentHashMap<String, Mutex>()
     suspend fun downloadDependency(
         groupId: String,
         artifactId: String,
         version: String
-    ): File = withContext(Dispatchers.IO) {
-        val jarName = "$artifactId-$version.jar"
-        val groupPath = groupId.replace('.', '/')
-        val urlBase = "https://repo1.maven.org/maven2/$groupPath/$artifactId/$version/$jarName"
-        val localPath = Paths.get("compilers/$jarName").toFile()
+    ): File {
+        val key = "$artifactId-$version"
+        val mutex = downloadLocks.computeIfAbsent(key) { Mutex() }
 
-        if (localPath.exists()) return@withContext localPath
+        return mutex.withLock{
+            withContext(Dispatchers.IO) {
+                val jarName = "$artifactId-$version.jar"
 
-        println("== Downloading $artifactId $version ==")
-        localPath.parentFile.mkdirs()
-        URL(urlBase).openStream().use { input ->
-            Files.copy(input, localPath.toPath(), StandardCopyOption.REPLACE_EXISTING)
+                val groupPath = groupId.replace('.', '/')
+                val urlBase = "https://repo1.maven.org/maven2/$groupPath/$artifactId/$version/$jarName"
+                val localPath = Paths.get("compilers/$jarName").toFile()
+
+                if (localPath.exists()) return@withContext localPath
+
+                println("[Downloading] $artifactId $version")
+                localPath.parentFile.mkdirs()
+                URL(urlBase).openStream().use { input ->
+                    Files.copy(input, localPath.toPath(), StandardCopyOption.REPLACE_EXISTING)
+                }
+                return@withContext localPath
+            }
         }
-        return@withContext localPath
     }
 
     suspend fun getCompilers(version: String): Triple<File, File, File> {
-        val compilerJar = downloadDependency("org.jetbrains.kotlin", "kotlin-compiler-embeddable", version)
-        val trove4jJar = downloadDependency("org.jetbrains.intellij.deps", "trove4j", "1.0.20181211")
+        val mutex = compilerSetupLocks.computeIfAbsent(version) { Mutex() }
 
-        val homeDir = File("compilers/home-$version")
-        val libDir = File(homeDir, "lib")
-        if (!libDir.exists() || (libDir.listFiles()?.size ?: 0) < 3) {
-            libDir.mkdirs()
-            val stdlibJar = downloadDependency("org.jetbrains.kotlin", "kotlin-stdlib", version)
-            val scriptRuntimeJar = downloadDependency("org.jetbrains.kotlin", "kotlin-script-runtime", version)
-            val reflectJar = downloadDependency("org.jetbrains.kotlin", "kotlin-reflect", version)
+        return mutex.withLock {
+            val compilerJar = downloadDependency("org.jetbrains.kotlin", "kotlin-compiler-embeddable", version)
+            val trove4jJar = downloadDependency("org.jetbrains.intellij.deps", "trove4j", "1.0.20181211")
 
-            withContext(Dispatchers.IO) {
-                Files.copy(
-                    stdlibJar.toPath(),
-                    File(libDir, "kotlin-stdlib.jar").toPath(),
-                    StandardCopyOption.REPLACE_EXISTING
-                )
+            val homeDir = File("compilers/home-$version")
+            val libDir = File(homeDir, "lib")
+            if (!libDir.exists() || (libDir.listFiles()?.size ?: 0) < 3) {
+                libDir.mkdirs()
+                val stdlibJar = downloadDependency("org.jetbrains.kotlin", "kotlin-stdlib", version)
+                val scriptRuntimeJar = downloadDependency("org.jetbrains.kotlin", "kotlin-script-runtime", version)
+                val reflectJar = downloadDependency("org.jetbrains.kotlin", "kotlin-reflect", version)
+                val coroutinesJar = downloadDependency("org.jetbrains.kotlinx", "kotlinx-coroutines-core-jvm", "1.6.4") // Required for Kotlin > 2.0.0
+                val annotationsJar = downloadDependency("org.jetbrains", "annotations", "13.0")
 
-                Files.copy(
-                    scriptRuntimeJar.toPath(),
-                    File(libDir, "kotlin-script-runtime.jar").toPath(),
-                    StandardCopyOption.REPLACE_EXISTING
-                )
-                Files.copy(
-                    reflectJar.toPath(),
-                    File(libDir, "kotlin-reflect.jar").toPath(),
-                    StandardCopyOption.REPLACE_EXISTING
-                )
+                withContext(Dispatchers.IO) {
+                    Files.copy(
+                        stdlibJar.toPath(),
+                        File(libDir, "kotlin-stdlib.jar").toPath(),
+                        StandardCopyOption.REPLACE_EXISTING
+                    )
+                    Files.copy(
+                        scriptRuntimeJar.toPath(),
+                        File(libDir, "kotlin-script-runtime.jar").toPath(),
+                        StandardCopyOption.REPLACE_EXISTING
+                    )
+                    Files.copy(
+                        reflectJar.toPath(),
+                        File(libDir, "kotlin-reflect.jar").toPath(),
+                        StandardCopyOption.REPLACE_EXISTING
+                    )
+                    Files.copy(
+                        coroutinesJar.toPath(),
+                        File(libDir, "kotlinx-coroutines-core-jvm.jar").toPath(),
+                        StandardCopyOption.REPLACE_EXISTING
+                    )
+                    Files.copy(
+                        annotationsJar.toPath(),
+                        File(libDir, "annotations.jar").toPath(),
+                        StandardCopyOption.REPLACE_EXISTING
+                    )
+                }
             }
-        }
 
-        return Triple(compilerJar, trove4jJar, homeDir)
+            Triple(compilerJar, trove4jJar, homeDir)
+        }
     }
 }

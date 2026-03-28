@@ -49,7 +49,7 @@ class SampleIssueManager(private val projectRoot: String = System.getProperty("u
             outputsDir.mkdirs()
         }
 
-        val timestamp = SimpleDateFormat("yyyyMMdd_HHmmss_SSS".format(Date()))
+        val timestamp = SimpleDateFormat("yyyy_MM_dd_HH-mm-ss_SSS").format(Date())
         val issueId = "${verdict.status.name}_${timestamp}"
         val issueDir = File(outputsDir, issueId)
         issueDir.mkdirs()
