@@ -29,6 +29,17 @@ publishing {
             artifactId = "sample-kai-fuzzer"
             version = project.version.toString()
         }
+
+        repositories {
+            maven {
+                name = "GitHubPackages"
+                url = uri("https://maven.pkg.github.com/AJThePro99/sample-kotlin-library")
+                credentials {
+                    username = System.getenv("GITHUB_ACTOR")
+                    password = System.getenv("GITHUB_TOKEN")
+                }
+            }
+        }
     }
 }
 
