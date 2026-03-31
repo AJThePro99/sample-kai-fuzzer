@@ -1,7 +1,5 @@
 package dataModels
 
-import java.util.UUID
-
 enum class SutBackend {
     JVM,
     NATIVE,

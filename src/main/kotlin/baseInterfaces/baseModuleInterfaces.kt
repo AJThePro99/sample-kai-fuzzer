@@ -41,5 +41,5 @@ interface KaiIssueManager {
     work on building an orchestrator with the reducer can begin. Till then, research on reduction techniques will be done.
  */
 interface KaiReducer {
-    suspend fun reduce(input: Verdict) : Verdict
+    suspend fun reduce(verdict: Verdict) : Verdict
 }

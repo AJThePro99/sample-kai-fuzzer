@@ -25,8 +25,6 @@ fuzzing compilers.
 
 ## Example driver code
 
-Simply create a new kotlin project,
-
 ```kotlin
 fun main() = runBlocking {
     println("=== Starting Sample Kai Fuzzer ===")
@@ -56,7 +54,7 @@ fun main() = runBlocking {
 
 Output of the above program
 
-```jql
+```shell
 === Starting Sample Kai Fuzzer ===
 [Downloading] kotlin-compiler-embeddable 1.4.0
 [Downloading] trove4j 1.0.20181211
@@ -90,17 +88,213 @@ BUILD SUCCESSFUL in 1m 47s
 
 ## How to use it yourself
 
+1. Create a new Kotlin project and use Gradle as your build system, and choose Kotlin DSL
+2. Go to the `build.gradle.kts` in your project root, and make sure you add/replace these sections
+```kotlin
+repositories {
+    mavenCentral()
+    maven {
+        name = "GitHubPackages"
+        url = uri("https://maven.pkg.github.com/AJThePro99/sample-kai-fuzzer")
+        credentials {
+            username = project.findProperty("gpr.user") as String?
+            password = project.findProperty("gpr.key") as String?
+        }
+    }
+}
+
+
+dependencies {
+    implementation("com.aadith:sample-kai-fuzzer:0.0.1")
+}
+```
+3. Since this library is published on GitHub packages, you'll need to create a PAT (Personal Access Token) in order to use this library
+    1. Go to GitHub settings, and select `Developer Settings`
+   2. There, under the Personal access tokens tab, select `Tokens (Classic`
+   3. Click `Generate new token` -> `Generate new token (classic)`
+   4. Select the `read:packages` scope, and click `Generate token`
+   5. Immediately copy the personal access token and store it.
+   6. On Linux or MacOS, you should save it in this location `~/.gradle/gradle.properties`
+   ```text
+   gpr.user=YOUR_GITHUB_USERNAME
+   gpr.key=YOUR_PERSONAL_ACCESS_TOKEN
+   ```
+   On Windows, store the exact same `gradle.properties` file at this location
+   ```text
+      C:\Users\<YourUsername>\.gradle\gradle.properties
+   ```
+4. And, you're all set up. Sync the Gradle project, write your driver code, and run the compiler fuzzer
+
+### Alternatively
+
+You could clone this repository. Open a terminal in the root directory of the project and run this command
+```shell
+./gradlew publishToMavenLocal
+```
+
+And, in a fresh Kotlin project, you just need to tweak the `build.gradle.kts` file to add
+
+```kotlin
+repositories { 
+    mavenCentral()
+    mavenLocal() // Add this
+}
+
+dependencies {
+    implementation("com.aadith:sample-kai-fuzzer:0.0.1")
+}
+```
+And it should work the same.
+
+---
+## API Reference
+<details>
+  <summary>API reference for the sample-kai-fuzzer library</summary>
+
+### 1. Input Generator
+
+**Base Interface**: `KaiInputGenerator`
+
+```kotlin
+// Generate random Kotlin programs
+val inputGenerator = SampleInputGenerator()
+
+// Or provide specific code for deterministic testing
+val inputGenerator = SingleInputGenerator(sourceCode = "fun main() { ... }")
+```
+
+**Key Method**:
+- `suspend fun generateInput(): FuzzInput` - Returns a fuzz input containing source code and seed
+
+**Data Model**:
+```kotlin
+data class FuzzInput(
+    val id: UUID = UUID.randomUUID(),
+    val sourceCode: String,
+    val generatorId: String,
+    val seedUsed: Long? = 0L
+)
+```
+
 ---
 
-## What it does
+### 2. SUT Handler
 
-This project was built for differential testing of the kotlin compiler across different versions
+**Base Interface**: `KaiSutHandler`
+
+```kotlin
+val sutHandler = SampleSutHandler(
+    jvmVersions = listOf("1.4.0", "1.5.0", "1.9.20", "2.1.0", "2.3.0")
+)
+```
+
+**Key Method**:
+- `suspend fun executeOnCompilers(input: FuzzInput): SutResult` - Compiles input on all specified compiler versions
+
+**Data Models**:
+```kotlin
+data class SutResult(
+    val input: FuzzInput,
+    val outputList: Map<SutBackend, List<CompilerExecutionOutput>>
+)
+
+data class CompilerExecutionOutput(
+    val version: String,
+    val exitCode: Int,
+    val stdout: String,
+    val stderr: String,
+    val compiledFilePath: String? = null
+)
+
+enum class SutBackend {
+    JVM, NATIVE, JS, WASM
+}
+```
+
+---
+
+### 3. Oracle
+
+**Base Interface**: `KaiOracle`
+
+```kotlin
+// Compare compilation outputs only
+val oracle = CompileOnlyOracle()
+
+// Compare both compilation and runtime outputs
+val oracle = RunnerOracle()
+```
+
+**Key Method**:
+- `suspend fun evaluate(sutResult: SutResult): Verdict` - Analyzes results and delivers a verdict
+
+**Data Models**:
+```kotlin
+data class Verdict(
+    val result: SutResult,
+    val status: VerdictStatus,
+    val description: String? = null
+)
+
+enum class VerdictStatus {
+    CORRECT,        // All compilations succeed and match
+    BUG_FOUND,      // Compilation results across versions do not match
+    INVALID_INPUT,  // All compilers fail with same error
+    UNKNOWN         // Ambiguous state
+}
+```
+
+---
+
+### 4. Issue Manager
+
+**Base Interface**: `KaiIssueManager`
+
+```kotlin
+val issueManager = SampleIssueManager(projectRoot = System.getProperty("user.dir"))
+```
+
+**Key Method**:
+- `suspend fun processVerdict(verdict: Verdict)` - Handles verdict by storing bugs or cleaning up correct outputs
+
+**Features**:
+- Stores bugs found in `/outputs` directory with:
+  - `Program.kt` - Source code that triggered the bug
+  - `summary.txt` - Detailed verdict and compiler output
+  - `output_<version>.jar` - Compiled artifacts (when applicable)
+- Automatically cleans up temporary files for correct outputs
+
+---
+
+### 5. Orchestrator
+
+**Base Interface**: `KaiFuzzer`
+
+```kotlin
+val fuzzer = SampleKaiFuzzer(
+    inputGenerator = inputGenerator,
+    sutHandler = sutHandler,
+    oracle = oracle,
+    issueManager = issueManager
+)
+```
+
+**Key Method**:
+- `suspend fun run(programs: Long, jobs: Int)` - Executes the fuzzing session
+  - `programs`: Number of test cases to generate and run
+  - `jobs`: Number of parallel compilation jobs
+
+
+</details>
+---
+
+## What this library does
+
+This project was built for differential testing of the Kotlin compiler across different compiler versions.
 It downloads the required compilers, and runs the fuzzy generated code on the compilers for each specified version.
 
-You can even perform specific testing. Pass in your own Kotlin code, and watch Kai take it through the entire system and
-print a result.
+You can even perform specific testing. Pass in your own Kotlin code, and watch Kai take it through the entire system and deliver your results.
 
-Extremely useful for deterministic testing.
 
 ## Putting it to the test with a real compiler bug
 
@@ -109,7 +303,7 @@ To directly demonstrate the aforementioned task #4,
 `How would you test the fuzzer itself? Is back-testing possible? If yes, how?
 `
 
-We shall pit the system against a real compiler bug that the original kotlin compiler has found. And see if this system
+We shall pit the system against a real compiler bug that the original Kotlin compiler has found. And see if this system
 is able to find it.
 
 Since we can test pre-written code, it's extremely simple.
@@ -170,7 +364,7 @@ fun main() = runBlocking {
 ```
 Let's run it:
 
-```jql
+```shell
 == Start of Kai Fuzzing Session ==
 Testing YouTrack Issue KT-47891
 [Downloading] kotlin-compiler-embeddable 1.5.21
@@ -183,10 +377,9 @@ Testing YouTrack Issue KT-47891
 [Downloading] kotlin-reflect 1.6.0-M1
 Fuzzing Session complete
 ```
+We see the creation of a new `/outputs` directory, and it seems like a new issue has been recorded.
 
 ![img.png](img.png)
-
-We see the creation of a new `/outputs` directory and there seems to be an issue stored there.
 
 The issue manager stores the output in a clean, readable format for future reference. In this particular session, I've
 used the RunnerOracle() Which compares the compilation outputs, and also runtime outputs of the input code to test for
@@ -554,9 +747,9 @@ Since the [KT-47891](https://youtrack.jetbrains.com/issue/KT-47891/JVM-IllegalSt
 
 ## Limitations
 
-- This is a simple proof of concept for my proposal. It does not implement the sophisticated input generator algorithms to do the actual fuzzing yet.
-- It demonstrates pluggability and clean architecture the best. But, File IO in the `SampleIssueManager()` currently hardcodes output paths to the project root. For production, this module will adhere to stricter protocols to make it more flexible for the user.
-- There is a proposal to extend this fuzzer to support all Kotlin backends (JVM, Native, JS, WASM). After the JVM support is stable, work for the other backends will begin.
+- This is a simple proof of concept for my proposal. It does not implement the sophisticated input generator algorithms to generate mutated code yet.
+- It demonstrates pluggability and clean architecture the best. But, File IO in the `SampleIssueManager()` currently hardcodes output paths to the project root. For production, this module will adhere to stricter protocols to make it safer and give more options to the user.
+- There is a proposal to extend this fuzzer to support all Kotlin backends (JVM, Native, JS, WASM). After the JVM backend support is stable, work for the other backends will begin.
 --- 
 
 ## Next Steps for this repository
